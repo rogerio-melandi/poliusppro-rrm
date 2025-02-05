@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from openai import OpenAI
 from dotenv import load_dotenv
+import boto3
 
 load_dotenv()
 
@@ -15,13 +16,24 @@ user_agent = "meu_app/0.1"
 # a "OPENAI_API_KEY" é vinculada diretamente pelo os.environ
 client = OpenAI()
 
+# Variáveis AWS
+bucket_name = os.environ.get("AWS_S3_BUCKET_NAME")
+aws_key = os.environ.get("AWS_ACCESS_KEY")
+aws_secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
+object_name = os.environ.get
+
+#Client AWS S3
+s3 = boto3.client("s3",
+                  aws_access_key_id=aws_key,
+                  aws_secret_access_key=aws_secret)
+
 # Classificar sentimento
 def classificar_sentimento(texto):
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
             messages=[
             {
-                "role": "system",
+                "role": "developer",
                 "content": "Voce é uma inteligencia artificial especializada em detectar sentimentos de textos."
             },
             {
@@ -51,13 +63,13 @@ def get_hot_posts(subreddit, token):
             "Authorization": f"bearer {token}"
         }
     )
-    return posts_requests.json()
+    return posts_requests.json()["data"]["children"]
 
 # Criando dataframe a partir de uma lista de dicionarios
 def create_posts_df(posts):
     posts_data = []
 
-    for post in posts["data"]["children"]:
+    for post in posts:
         posts_data.append({
             "id":  post["kind"] + "_" + post["data"]["id"],
             "subreddit": post["data"]["subreddit"],
@@ -74,5 +86,14 @@ def create_posts_df(posts):
 token = obter_reddit_acess_token(client_id, client_secret)
 posts = get_hot_posts("python", token)
 df_posts = create_posts_df(posts)
+
 df_posts["sentimento"] = df_posts["title"].apply(classificar_sentimento)
-df_posts.to_csv("posts.csv")
+
+print(df_posts[['id','score', 'sentimento']])
+
+df_posts.to_csv("posts.csv", sep="|",index=False)
+
+# fazer upload no s3
+s3.upload_file("posts.csv", bucket_name, "posts.csv")
+
+print("ok")
